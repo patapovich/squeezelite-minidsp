@@ -1,0 +1,18 @@
+#!/bin/bash
+# Sets minidsp input source based on squeezelite power state.
+# Called by squeezelite -S option with:
+#   2 = init (squeezelite startup)
+#   1 = power on
+#   0 = power off
+
+STATE=${1:-2}
+
+case "$STATE" in
+    1) SOURCE=usb ;;
+    *)  SOURCE=toslink ;;
+esac
+
+for i in 1 2 3; do
+    minidsp source "$SOURCE" 2>/dev/null && exit 0
+    sleep 0.5
+done

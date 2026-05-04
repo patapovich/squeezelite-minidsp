@@ -1,0 +1,24 @@
+#!/bin/bash
+# Maps squeezelite volume (0-100) to minidsp master gain (-127 to 0 dB).
+# squeezelite maps the LMS dB range (-72..0) linearly to 0-100, so we invert
+# that: gain = (vol - 100) * 72 / 100
+VOL=${1:-0}
+
+# Debounce: squeezelite launches each volume call asynchronously, so multiple
+# instances run simultaneously during LMS fade-in on power-on. Write our
+# requested value, wait briefly, then skip if a later call overwrote it.
+REQFILE=/tmp/sq-volume-req
+echo "$VOL" > "$REQFILE"
+sleep 0.3
+[ "$(cat "$REQFILE" 2>/dev/null)" = "$VOL" ] || exit 0
+
+if [ "$VOL" -eq 0 ]; then
+    GAIN=-127
+else
+    GAIN=$(LC_NUMERIC=C awk -v v="$VOL" 'BEGIN { printf "%.1f", (v - 100) * 72.0 / 100.0 }')
+fi
+
+for i in 1 2 3; do
+    minidsp gain -- "$GAIN" 2>/dev/null && exit 0
+    sleep 0.5
+done
