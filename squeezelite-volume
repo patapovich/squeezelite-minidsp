@@ -1,8 +1,19 @@
 #!/bin/bash
-# Maps squeezelite volume (0-100) to minidsp master gain (-127 to 0 dB).
-# squeezelite maps the LMS dB range (-72..0) linearly to 0-100, so we invert
-# that: gain = (vol - 100) * 72 / 100
+# Maps squeezelite volume (0-100) to minidsp master gain via a tunable curve.
+#
+#   gain = FLOOR_DB * (1 - (vol/100)^CURVE_K)
+#
+# Slider 0 still hits hard mute (-127 dB). Slider 100 is always 0 dB.
+#
+# Tunables (override via env or systemd EnvironmentFile):
+#   FLOOR_DB  Maximum attenuation when vol approaches 1 (default -50).
+#             Lower magnitude = less dynamic range, higher minimum loudness.
+#   CURVE_K   Curve exponent (default 1.0 = linear). >1 = bottom-heavy
+#             attenuation (slider 1-30 stays near floor, top of slider gets
+#             steeper). Try 1.5, 2, 2.5, 3. <1 = top-heavy (audio-taper feel).
 VOL=${1:-0}
+FLOOR_DB=${FLOOR_DB:--50}
+CURVE_K=${CURVE_K:-1}
 
 # Debounce: squeezelite launches each volume call asynchronously, so multiple
 # instances run simultaneously during LMS fade-in on power-on. Write our
@@ -15,7 +26,8 @@ sleep 0.3
 if [ "$VOL" -eq 0 ]; then
     GAIN=-127
 else
-    GAIN=$(LC_NUMERIC=C awk -v v="$VOL" 'BEGIN { printf "%.1f", (v - 100) * 72.0 / 100.0 }')
+    GAIN=$(LC_NUMERIC=C awk -v v="$VOL" -v f="$FLOOR_DB" -v k="$CURVE_K" \
+        'BEGIN { printf "%.1f", f * (1 - (v/100.0)^k) }')
 fi
 
 for i in 1 2 3; do

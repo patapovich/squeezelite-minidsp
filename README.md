@@ -8,7 +8,30 @@ Helper scripts for using [squeezelite](https://github.com/ralph-irving/squeezeli
 
 Maps LMS volume commands to minidsp master gain. Used with the squeezelite `-w` option.
 
-LMS controls volume in a -72..0 dB range, which squeezelite linearises to 0–100 before calling the script. This script maps that to minidsp's -127..0 dB master gain range using the same linear dB scale.
+LMS controls volume in a -72..0 dB range, which squeezelite linearises to 0–100 before calling the script. This script maps that to minidsp master gain via:
+
+```
+gain = FLOOR_DB * (1 - (vol/100)^CURVE_K)
+```
+
+Slider 0 still hits hard mute (`-127` dB). Slider 100 is always 0 dB.
+
+Two tunables (override via env vars):
+
+| Var | Default | Effect |
+|---|---|---|
+| `FLOOR_DB` | `-50` | dB at slider 1. Lower magnitude → less dynamic range, hotter minimum. Higher magnitude (e.g. `-72`) softens the mute→audible cliff. |
+| `CURVE_K` | `1` | Curve exponent. `1` = linear (matches a simple FLOOR_DB mapping). `>1` = bottom-heavy: slider 1–30 stays near floor, listening sweet spot moves up the slider, top steepens. `<1` = top-heavy (audio-taper / log-pot feel). |
+
+Examples:
+
+```sh
+FLOOR_DB=-50 CURVE_K=1   squeezelite-volume 50   # linear, slider 50 → -25 dB
+FLOOR_DB=-72 CURVE_K=2   squeezelite-volume 50   # squared, slider 50 → -54 dB
+FLOOR_DB=-72 CURVE_K=3   squeezelite-volume 50   # cubed, slider 50 → -63 dB
+```
+
+For systemd-managed installs add `FLOOR_DB="-72"` and `CURVE_K="2"` to `/etc/default/squeezelite` and ensure the unit's launcher exports the env (e.g. `set -a; . /etc/default/squeezelite; set +a; exec squeezelite ...`).
 
 A short debounce (0.3 s) is applied so LMS's fade-in ramp on power-on is collapsed to a single gain command.
 
