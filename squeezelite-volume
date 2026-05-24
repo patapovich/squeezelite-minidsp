@@ -3,7 +3,7 @@
 #
 #   gain = FLOOR_DB * (1 - (vol/100)^CURVE_K)
 #
-# Slider 0 still hits hard mute (-127 dB). Slider 100 is always 0 dB.
+# Slider 100 is always 0 dB. Slider 0 is a no-op (see below).
 #
 # Tunables (override via env or systemd EnvironmentFile):
 #   FLOOR_DB  Maximum attenuation when vol approaches 1 (default -50).
@@ -15,6 +15,16 @@ VOL=${1:-0}
 FLOOR_DB=${FLOOR_DB:--50}
 CURVE_K=${CURVE_K:-1}
 
+# Slider 0: do nothing. LMS sends vol=0 on pause/stop, and on a multi-input
+# MiniDSP (USB + Toslink etc.) hard-muting the master also silences whatever
+# external source is currently playing. Squeezelite is paused so no audio
+# from it is reaching the device anyway; leaving the master gain alone means
+# Toslink (or any other selected input) keeps playing at the previous level,
+# and HA's volume slider doesn't snap to 0 on every pause.
+if [ "$VOL" -eq 0 ]; then
+    exit 0
+fi
+
 # Debounce: squeezelite launches each volume call asynchronously, so multiple
 # instances run simultaneously during LMS fade-in on power-on. Write our
 # requested value, wait briefly, then skip if a later call overwrote it.
@@ -23,12 +33,8 @@ echo "$VOL" > "$REQFILE"
 sleep 0.3
 [ "$(cat "$REQFILE" 2>/dev/null)" = "$VOL" ] || exit 0
 
-if [ "$VOL" -eq 0 ]; then
-    GAIN=-127
-else
-    GAIN=$(LC_NUMERIC=C awk -v v="$VOL" -v f="$FLOOR_DB" -v k="$CURVE_K" \
-        'BEGIN { printf "%.1f", f * (1 - (v/100.0)^k) }')
-fi
+GAIN=$(LC_NUMERIC=C awk -v v="$VOL" -v f="$FLOOR_DB" -v k="$CURVE_K" \
+    'BEGIN { printf "%.1f", f * (1 - (v/100.0)^k) }')
 
 for i in 1 2 3; do
     minidsp gain -- "$GAIN" 2>/dev/null && exit 0

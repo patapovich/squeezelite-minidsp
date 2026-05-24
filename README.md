@@ -14,7 +14,7 @@ LMS controls volume in a -72..0 dB range, which squeezelite linearises to 0–10
 gain = FLOOR_DB * (1 - (vol/100)^CURVE_K)
 ```
 
-Slider 0 still hits hard mute (`-127` dB). Slider 100 is always 0 dB.
+Slider 100 is always 0 dB. **Slider 0 is a no-op** — the script exits without touching the device. LMS sends `vol=0` on pause/stop, and on a multi-input MiniDSP (e.g. DDRC-24 with USB + Toslink) hard-muting the master also silences any other input that's currently selected. Squeezelite is paused so no audio is flowing from it anyway; leaving the master gain alone keeps Toslink (or whatever input is selected) playing at the previous level, and any external HA / MQTT volume display doesn't snap to 0 on every pause.
 
 Two tunables (override via env vars):
 
