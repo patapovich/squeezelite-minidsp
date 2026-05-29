@@ -15,21 +15,27 @@ VOL=${1:-0}
 FLOOR_DB=${FLOOR_DB:--50}
 CURVE_K=${CURVE_K:-1}
 
-# Slider 0: do nothing. LMS sends vol=0 on pause/stop, and on a multi-input
-# MiniDSP (USB + Toslink etc.) hard-muting the master also silences whatever
-# external source is currently playing. Squeezelite is paused so no audio
-# from it is reaching the device anyway; leaving the master gain alone means
-# Toslink (or any other selected input) keeps playing at the previous level,
-# and HA's volume slider doesn't snap to 0 on every pause.
+# Debounce: squeezelite launches each volume call asynchronously, so multiple
+# instances run simultaneously during LMS fade ramps (pause-fade-out,
+# unpause-fade-in, power-on). Every call writes its value to REQFILE
+# FIRST — including VOL=0 — so that pending earlier sleeping calls see a
+# newer value and exit. If we early-exited on VOL=0 before writing, the
+# penultimate ramp step (e.g. VOL=9) would not be overwritten and would
+# wake, find its own value still in the file, and apply itself — leaving
+# the device near the floor every pause.
+REQFILE=/tmp/sq-volume-req
+echo "$VOL" > "$REQFILE"
+
+# Slider 0: don't touch the device. LMS sends vol=0 on pause/stop, and on
+# a multi-input MiniDSP (USB + Toslink etc.) hard-muting the master also
+# silences whatever external source is currently playing. Squeezelite is
+# paused so no audio from it is flowing anyway; leaving the master gain
+# alone keeps Toslink (or whatever input is selected) playing at the
+# previous level, and HA's volume slider doesn't snap to 0 on every pause.
 if [ "$VOL" -eq 0 ]; then
     exit 0
 fi
 
-# Debounce: squeezelite launches each volume call asynchronously, so multiple
-# instances run simultaneously during LMS fade-in on power-on. Write our
-# requested value, wait briefly, then skip if a later call overwrote it.
-REQFILE=/tmp/sq-volume-req
-echo "$VOL" > "$REQFILE"
 sleep 0.3
 [ "$(cat "$REQFILE" 2>/dev/null)" = "$VOL" ] || exit 0
 
